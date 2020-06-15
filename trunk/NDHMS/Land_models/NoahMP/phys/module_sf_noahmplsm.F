@@ -112,6 +112,7 @@ MODULE MODULE_SF_NOAHMPLSM
                       !   4 -> BATS surface and subsurface runoff (free drainage)
                       !   5 -> Miguez-Macho&Fan groundwater scheme (Miguez-Macho et al. 2007 JGR; Fan et al. 2007 JGR)
 		      !          (needs further testing for public use)
+                      !   6 -> Variable Infiltration Capacity Model surface runoff scheme (Wood et al., 1992, JGR) 
 
   INTEGER :: OPT_SFC  ! options for surface layer drag coeff (CH & CM)
                       ! **1 -> M-O
@@ -361,6 +362,7 @@ MODULE MODULE_SF_NOAHMPLSM
      REAL :: DWSAT(NSOIL)  !saturated soil hydraulic diffusivity
      REAL :: QUARTZ(NSOIL) !soil quartz content
      REAL :: F1            !soil thermal diffusivity/conductivity coef (not used MB: 20140718)
+     REAL :: BVIC          !VIC model infiltration parameter
 !------------------------------------------------------------------------------------------!
 ! From the GENPARM.TBL file
 !------------------------------------------------------------------------------------------!
@@ -6996,6 +6998,11 @@ ENDIF   ! CROPTYPE == 0
        END IF
     END IF
 
+    IF (OPT_RUN == 6) THEN
+       CALL COMPUTE_VIC_SURFRUNOFF(parameters,NSOIL,SMC,ZSOIL,QINSUR,FSAT,RUNSRF)
+       !print*,'ZSOIL(1)=',ZSOIL
+       print*,'FSAT=',FSAT,'RUNSRF=',RUNSRF
+    END IF
 ! determine iteration times and finer time step
 
     NITER = 1
@@ -7510,6 +7517,60 @@ ENDIF   ! CROPTYPE == 0
     SMC = SH2O + SICE
 
   END SUBROUTINE SSTEP
+
+!==begin VIC subroutines ========================================================================== 
+
+ SUBROUTINE COMPUTE_VIC_SURFRUNOFF(parameters,NSOIL,SMC,ZSOIL,QINSUR,ASAT,RUNSRF)
+! ----------------------------------------------------------------------
+! Calculate the saturated area and runoff based on VIC runoff scheme.
+! ----------------------------------------------------------------------
+    IMPLICIT NONE
+! ----------------------------------------------------------------------
+! Inputs
+  TYPE (noahmp_parameters), INTENT(IN)   :: parameters
+  INTEGER,                  INTENT(IN)   :: NSOIL
+  REAL, DIMENSION(1:NSOIL), INTENT(IN)   :: SMC
+  REAL, DIMENSION(1:NSOIL), INTENT(IN)   :: ZSOIL
+
+  REAL                    , INTENT(IN)   :: QINSUR
+  REAL                    , INTENT(OUT)  :: ASAT
+! Output
+  REAL                    , INTENT(INOUT):: RUNSRF
+!------------------------------------------------------------------------
+!local 
+  REAL :: EX, I_0, I_MAX, BASIS
+
+! Initialize Variables  
+  EX    = 0.0
+  ASAT  = 0.0
+  I_MAX = 0.0
+  I_0   = 0.0
+  BASIS = 0.0
+
+  ! Saturated area from soil moisture
+  EX    = parameters%BVIC/(1+parameters%BVIC)
+  ASAT  = 1.0 - (( 1.0 - (SMC(1)/parameters%SMCMAX(1)))**EX)
+
+  ! Infiltration for the previous time-step soil moisture based on ASAT
+  I_MAX = (1.0 + parameters%BVIC)*(parameters%SMCMAX(1)*-1*ZSOIL(1)) ! mm
+  I_0   = I_MAX*(1.0 - (1.0 - ASAT)**(1.0/parameters%BVIC))
+
+  print*,'I_MAX=',I_MAX,'I_0=',I_0,'SMCMAX=',parameters%SMCMAX(1)*-1*ZSOIL(1),'SMC=',SMC(1)*-1*ZSOIL(1) 
+ 
+  ! Solve for surface runoff
+  IF(QINSUR .EQ. 0.0) THEN
+     RUNSRF = 0.0
+  ELSE IF(I_MAX .EQ. 0.0) THEN
+     RUNSRF = QINSUR
+  ELSE IF( (I_0 + QINSUR) .GT. I_MAX ) THEN
+     RUNSRF = QINSUR - (parameters%SMCMAX(1) - SMC(1))*-1*ZSOIL(1)
+  ELSE
+     BASIS  = 1.0 - ((I_0 + QINSUR)/I_MAX)
+     RUNSRF = QINSUR - ((parameters%SMCMAX(1) - SMC(1))*-1*ZSOIL(1)) + &
+              ((parameters%SMCMAX(1)*-1*ZSOIL(1))*(basis**(1.0+parameters%BVIC)))
+  END IF
+  IF (RUNSRF .LT. 0.0) RUNSRF = 0.0
+ END SUBROUTINE COMPUTE_VIC_SURFRUNOFF
 
 !== begin wdfcnd1 ==================================================================================
 
@@ -9127,6 +9188,7 @@ MODULE NOAHMP_TABLES
     REAL :: DWSAT_TABLE(MAX_SOILTYP)       !monthly stem area index, one-sided
     REAL :: SMCWLT_TABLE(MAX_SOILTYP)      !monthly leaf area index, one-sided
     REAL :: QUARTZ_TABLE(MAX_SOILTYP)         !single-side leaf area per Kg [m2/kg]
+    REAL :: BVIC_TABLE(MAX_SOILTYP)        ! VIC model infiltration parameter (-)  
 
 ! GENPARM.TBL parameters
 
@@ -9532,6 +9594,7 @@ CONTAINS
        FRZK_TABLE = -1.E36
        ZBOT_TABLE = -1.E36
        CZIL_TABLE = -1.E36
+       BVIC_TABLE = -1.E36       
 
 !
 !-----READ IN SOIL PROPERTIES FROM SOILPARM.TBL
@@ -9560,7 +9623,7 @@ CONTAINS
     DO LC=1,SLCATS
       READ (21,*) ITMP,BEXP_TABLE(LC),SMCDRY_TABLE(LC),F1_TABLE(LC),SMCMAX_TABLE(LC),    &
                   SMCREF_TABLE(LC),PSISAT_TABLE(LC),DKSAT_TABLE(LC), DWSAT_TABLE(LC),   &
-                  SMCWLT_TABLE(LC), QUARTZ_TABLE(LC)
+                  SMCWLT_TABLE(LC), QUARTZ_TABLE(LC),BVIC_TABLE(LC)
     ENDDO
 
     CLOSE (21)
