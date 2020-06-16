@@ -7349,7 +7349,7 @@ ENDIF   ! CROPTYPE == 0
           IF(OPT_RUN == 1 .or. OPT_RUN == 2) THEN
              QDRAIN   = 0.
           END IF
-          IF(OPT_RUN == 3) THEN
+          IF(OPT_RUN == 3 .OR. OPT_RUN == 6) THEN
              QDRAIN   = parameters%SLOPE*WCND(K)
           END IF
           IF(OPT_RUN == 4) THEN
@@ -7365,7 +7365,8 @@ ENDIF   ! CROPTYPE == 0
              ENDIF
              DSMDZ(K) = 2.0 * (SMX(K) - SMXBOT) / TEMP1
              QDRAIN   = WDF(K  ) * DSMDZ(K  ) + WCND(K  )
-          END IF   
+          END IF
+   
           WFLUX(K) = -(WDF(K-1)*DSMDZ(K-1))-WCND(K-1)+ETRANI(K) + QDRAIN
        END IF
     END DO
@@ -7553,13 +7554,14 @@ ENDIF   ! CROPTYPE == 0
   
   DO IZ=1,NSOIL-2
     TOP_MOIST     = TOP_MOIST + (SMC(IZ)*-1*ZSOIL(IZ))*1000 ! mm 
-    TOP_MAX_MOIST = TOP_MAX_MOIST + (parameters%SMCMAX(IZ)*-1*ZSOIL(IZ))*1000 ! mm
+    TOP_MAX_MOIST = TOP_MAX_MOIST + (parameters%SMCMAX(IZ)*-1*ZSOIL(IZ))*1000 ! mm   --> Try SMCREF instead of SMCMAX
   END DO
 
   ! Saturated area from soil moisture
   EX    = parameters%BVIC/(1+parameters%BVIC)
-  ASAT  = 1.0 - (( 1.0 - (TOP_MOIST/TOP_MAX_MOIST))**EX)
-
+  ASAT  = 1.0 - (( 1.0 - (TOP_MOIST/TOP_MAX_MOIST))**EX)  ! 
+  
+ 
   ! Infiltration for the previous time-step soil moisture based on ASAT
   I_MAX = (1.0 + parameters%BVIC)*TOP_MAX_MOIST ! mm
   I_0   = I_MAX*(1.0 - (1.0 - ASAT)**(1.0/parameters%BVIC))
@@ -7583,6 +7585,8 @@ ENDIF   ! CROPTYPE == 0
   print*,'I_MAX=',I_MAX,'I_0=',I_0,'TOP_MOIST=',TOP_MOIST,'TOP_MAX_MOIST=',TOP_MAX_MOIST,'RUNSRF=',RUNSRF,'QINSUR=',QINSUR
 
  END SUBROUTINE COMPUTE_VIC_SURFRUNOFF
+
+! End VIC subroutines
 
 !== begin wdfcnd1 ==================================================================================
 
