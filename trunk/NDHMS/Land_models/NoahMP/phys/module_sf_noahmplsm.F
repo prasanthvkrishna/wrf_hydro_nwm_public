@@ -5843,7 +5843,7 @@ ENDIF   ! CROPTYPE == 0
           RUNSUB       = QDIS          !mm/s
        END IF
 
-       IF(OPT_RUN == 3 .or. OPT_RUN == 4) THEN 
+       IF(OPT_RUN == 3 .or. OPT_RUN == 4 .or. OPT_RUN == 6) THEN 
           RUNSUB       = RUNSUB + QDRAIN        !mm/s
        END IF
 
@@ -7047,7 +7047,7 @@ ENDIF   ! CROPTYPE == 0
 
     RUNSRF = RUNSRF * 1000. + RSAT * 1000./DT  ! m/s -> mm/s
     QDRAIN = QDRAIN * 1000.
-
+    print*,'QDRAIN=',QDRAIN
 !WRF_HYDRO_DJG...
 !yw    INFXSRT = RUNSRF * DT   !mm/s -> mm
 
@@ -7582,7 +7582,7 @@ ENDIF   ! CROPTYPE == 0
   RUNSRF = RUNSRF/DT ! mm/s
   IF (RUNSRF .LT. 0.0) RUNSRF = 0.0
   
-  print*,'I_MAX=',I_MAX,'I_0=',I_0,'TOP_MOIST=',TOP_MOIST,'TOP_MAX_MOIST=',TOP_MAX_MOIST,'RUNSRF=',RUNSRF,'QINSUR=',QINSUR
+  !print*,'I_MAX=',I_MAX,'I_0=',I_0,'TOP_MOIST=',TOP_MOIST,'TOP_MAX_MOIST=',TOP_MAX_MOIST,'RUNSRF=',RUNSRF,'QINSUR=',QINSUR
 
  END SUBROUTINE COMPUTE_VIC_SURFRUNOFF
 
