@@ -5820,7 +5820,6 @@ ENDIF   ! CROPTYPE == 0
 
 #ifdef WRF_HYDRO
        QINSUR = QINSUR+sfcheadrt/DT*0.001  !sfcheadrt units (m)
-       print*,'sfcheadrt=',sfcheadrt
 #endif
 
 ! lake/soil water balances
@@ -7016,7 +7015,7 @@ ENDIF   ! CROPTYPE == 0
     DTFINE  = DT / NITER
 
 ! solve soil moisture
-    print*,'QINSUR=',QINSUR
+
     QDRAIN_SAVE = 0.0
     RUNSRF_SAVE = 0.0
     DO ITER = 1, NITER
@@ -7025,10 +7024,7 @@ ENDIF   ! CROPTYPE == 0
                       SICEMAX,QINSUR ,                         & !in
                       PDDUM  ,RUNSRF )                           !out
        END IF
-       !IF(QINSUR > 0. .and. OPT_RUN == 6) THEN
-       !   CALL COMPUTE_VIC_SURFRUNOFF(parameters,DT,NSOIL,SMC,ZSOIL,QINSUR,FSAT,RUNSRF,PDDUM)
-       !END IF
-       
+
        CALL SRT   (parameters,NSOIL  ,ZSOIL  ,DTFINE ,PDDUM  ,ETRANI , & !in
                    QSEVA  ,SH2O   ,SMC    ,ZWT    ,FCR    , & !in
                    SICEMAX,FCRMAX ,ILOC   ,JLOC   ,SMCWTD ,         & !in
@@ -7050,7 +7046,7 @@ ENDIF   ! CROPTYPE == 0
 
     RUNSRF = RUNSRF * 1000. + RSAT * 1000./DT  ! m/s -> mm/s
     QDRAIN = QDRAIN * 1000.
-    print*,'QDRAIN=',QDRAIN,'RUNSRF=',RUNSRF,'QINSUR=',QINSUR,'PDDUM=',PDDUM,'RSAT=',RSAT
+
 !WRF_HYDRO_DJG...
 !yw    INFXSRT = RUNSRF * DT   !mm/s -> mm
 
