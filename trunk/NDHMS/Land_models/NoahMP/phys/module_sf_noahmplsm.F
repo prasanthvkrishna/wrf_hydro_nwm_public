@@ -5820,6 +5820,7 @@ ENDIF   ! CROPTYPE == 0
 
 #ifdef WRF_HYDRO
        QINSUR = QINSUR+sfcheadrt/DT*0.001  !sfcheadrt units (m)
+       print*,'sfcheadrt=',sfcheadrt
 #endif
 
 ! lake/soil water balances
@@ -6999,8 +7000,7 @@ ENDIF   ! CROPTYPE == 0
     END IF
 
     IF (OPT_RUN == 6) THEN
-       CALL COMPUTE_VIC_SURFRUNOFF(parameters,DT,NSOIL,SMC,ZSOIL,QINSUR,FSAT,RUNSRF)
-       PDDUM  = QINSUR - RUNSRF
+       CALL COMPUTE_VIC_SURFRUNOFF(parameters,DT,NSOIL,SMC,ZSOIL,QINSUR,FSAT,RUNSRF,PDDUM)
     END IF
 ! determine iteration times and finer time step
 
@@ -7016,7 +7016,7 @@ ENDIF   ! CROPTYPE == 0
     DTFINE  = DT / NITER
 
 ! solve soil moisture
-
+    print*,'QINSUR=',QINSUR
     QDRAIN_SAVE = 0.0
     RUNSRF_SAVE = 0.0
     DO ITER = 1, NITER
@@ -7025,7 +7025,10 @@ ENDIF   ! CROPTYPE == 0
                       SICEMAX,QINSUR ,                         & !in
                       PDDUM  ,RUNSRF )                           !out
        END IF
-
+       !IF(QINSUR > 0. .and. OPT_RUN == 6) THEN
+       !   CALL COMPUTE_VIC_SURFRUNOFF(parameters,DT,NSOIL,SMC,ZSOIL,QINSUR,FSAT,RUNSRF,PDDUM)
+       !END IF
+       
        CALL SRT   (parameters,NSOIL  ,ZSOIL  ,DTFINE ,PDDUM  ,ETRANI , & !in
                    QSEVA  ,SH2O   ,SMC    ,ZWT    ,FCR    , & !in
                    SICEMAX,FCRMAX ,ILOC   ,JLOC   ,SMCWTD ,         & !in
@@ -7047,7 +7050,7 @@ ENDIF   ! CROPTYPE == 0
 
     RUNSRF = RUNSRF * 1000. + RSAT * 1000./DT  ! m/s -> mm/s
     QDRAIN = QDRAIN * 1000.
-    print*,'QDRAIN=',QDRAIN
+    print*,'QDRAIN=',QDRAIN,'RUNSRF=',RUNSRF,'QINSUR=',QINSUR,'PDDUM=',PDDUM,'RSAT=',RSAT
 !WRF_HYDRO_DJG...
 !yw    INFXSRT = RUNSRF * DT   !mm/s -> mm
 
@@ -7520,7 +7523,7 @@ ENDIF   ! CROPTYPE == 0
 
 !==begin VIC subroutines ========================================================================== 
 
- SUBROUTINE COMPUTE_VIC_SURFRUNOFF(parameters,DT,NSOIL,SMC,ZSOIL,QINSUR,ASAT,RUNSRF)
+ SUBROUTINE COMPUTE_VIC_SURFRUNOFF(parameters,DT,NSOIL,SMC,ZSOIL,QINSUR,ASAT,RUNSRF,PDDUM)
 ! ----------------------------------------------------------------------
 ! Calculate the saturated area and runoff based on VIC runoff scheme.
 ! ----------------------------------------------------------------------
@@ -7537,6 +7540,7 @@ ENDIF   ! CROPTYPE == 0
   REAL                    , INTENT(OUT)  :: ASAT
 ! Output
   REAL                    , INTENT(INOUT):: RUNSRF
+  REAL                    , INTENT(INOUT):: PDDUM
 !------------------------------------------------------------------------
 !local 
   REAL    :: EX, I_0, I_MAX, BASIS, TOP_MOIST, TOP_MAX_MOIST
@@ -7553,25 +7557,26 @@ ENDIF   ! CROPTYPE == 0
   RUNSRF = 0.0
   
   DO IZ=1,NSOIL-2
-    TOP_MOIST     = TOP_MOIST + (SMC(IZ)*-1*ZSOIL(IZ))*1000 ! mm 
-    TOP_MAX_MOIST = TOP_MAX_MOIST + (parameters%SMCMAX(IZ)*-1*ZSOIL(IZ))*1000 ! mm   --> Try SMCREF instead of SMCMAX
+    TOP_MOIST     = TOP_MOIST + (SMC(IZ)*-1*ZSOIL(IZ)) ! m
+    TOP_MAX_MOIST = TOP_MAX_MOIST + (parameters%SMCMAX(IZ)*-1*ZSOIL(IZ)) ! m  
   END DO
 
   ! Saturated area from soil moisture
   EX    = parameters%BVIC/(1+parameters%BVIC)
   ASAT  = 1.0 - (( 1.0 - (TOP_MOIST/TOP_MAX_MOIST))**EX)  ! 
-  
+  ASAT  = MAX(0.0, ASAT)
+  ASAT  = MIN(1.0, ASAT)
  
   ! Infiltration for the previous time-step soil moisture based on ASAT
-  I_MAX = (1.0 + parameters%BVIC)*TOP_MAX_MOIST ! mm
-  I_0   = I_MAX*(1.0 - (1.0 - ASAT)**(1.0/parameters%BVIC))
+  I_MAX = (1.0 + parameters%BVIC)*TOP_MAX_MOIST ! m
+  I_0   = I_MAX*(1.0 - (1.0 - ASAT)**(1.0/parameters%BVIC)) !m
  
   ! Solve for surface runoff
   IF(QINSUR .EQ. 0.0) THEN
      RUNSRF = 0.0
   ELSE IF(I_MAX .EQ. 0.0) THEN
      RUNSRF = QINSUR*DT
-  ELSE IF( (I_0 + QINSUR) .GT. I_MAX ) THEN
+  ELSE IF( (I_0 + (QINSUR*DT)) .GT. I_MAX ) THEN
      RUNSRF = (QINSUR*DT) - TOP_MAX_MOIST + TOP_MOIST
   ELSE
      BASIS  = 1.0 - ((I_0 + (QINSUR*DT))/I_MAX)
@@ -7579,10 +7584,12 @@ ENDIF   ! CROPTYPE == 0
               TOP_MAX_MOIST*(basis**(1.0+parameters%BVIC))
   END IF
   
-  RUNSRF = RUNSRF/DT ! mm/s
+  RUNSRF = RUNSRF/(DT) ! m/s
+
   IF (RUNSRF .LT. 0.0) RUNSRF = 0.0
-  
-  !print*,'I_MAX=',I_MAX,'I_0=',I_0,'TOP_MOIST=',TOP_MOIST,'TOP_MAX_MOIST=',TOP_MAX_MOIST,'RUNSRF=',RUNSRF,'QINSUR=',QINSUR
+  IF (RUNSRF .GT. QINSUR)RUNSRF = QINSUR
+
+  PDDUM = QINSUR - RUNSRF    ! m/s
 
  END SUBROUTINE COMPUTE_VIC_SURFRUNOFF
 
