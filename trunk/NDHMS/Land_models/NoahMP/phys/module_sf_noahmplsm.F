@@ -7659,7 +7659,7 @@ ENDIF   ! CROPTYPE == 0
                  YD_OLD = YD
                  TEMPR1 = 0.0
                  CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
-                 YD     = TEMPR1 + ((FSUR*DT)
+                 YD     = TEMPR1 + (FSUR*DT)
                  IF (ABS(YD-YD_OLD) .LE. 1E-05) THEN
                     GOTO 1001
                  END IF
@@ -7673,7 +7673,7 @@ ENDIF   ! CROPTYPE == 0
                YD_OLD = YD
                TEMPR1 = 0.0
                CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
-               YD     = YD - TEMPR1 + ((FSUR*DT) + DP
+               YD     = YD - TEMPR1 + (FSUR*DT) + DP
                IF (YD .LE. 0.0) YD = 0.0
                IF (YD .GE. DP) YD = DP
                IF (ABS(YD-YD_OLD) .LE. 1E-05) THEN
@@ -7822,7 +7822,7 @@ ENDIF   ! CROPTYPE == 0
 !---------------------------------------------------------------------------------------------
    IMPLICIT NONE
 ! --------------------------------------------------------------------------------------------
-   REAL,                     INTENT(IN) :: YD,Y0,R1,FMAX,FSUR,DT,DP,BB,
+   REAL,                     INTENT(IN) :: YD,Y0,R1,FMAX,FSUR,DT,DP,BB
    REAL,                     INTENT(OUT):: R2
 !------------------------------------------------------
    IF(YD .GE. Y0)THEN
