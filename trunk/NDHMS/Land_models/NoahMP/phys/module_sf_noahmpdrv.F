@@ -1195,6 +1195,8 @@ SUBROUTINE TRANSFER_MP_PARAMETERS(VEGTYPE,SOILTYPE,SLOPETYPE,SOILCOLOR,CROPTYPE,
     parameters%MP     =     MP_TABLE(VEGTYPE)       !slope of conductance-to-photosynthesis relationship
    parameters%RSURF_EXP  =   RSURF_EXP_TABLE
 #endif
+   parameters%BVIC  = BVIC_TABLE(SOILTYPE)
+   parameters%G     = G_TABLE(SOILTYPE)
 
 ! ----------------------------------------------------------------------
 ! Transfer GENPARM parameters

@@ -361,6 +361,8 @@ MODULE MODULE_SF_NOAHMPLSM
      REAL :: DWSAT(NSOIL)  !saturated soil hydraulic diffusivity
      REAL :: QUARTZ(NSOIL) !soil quartz content
      REAL :: F1            !soil thermal diffusivity/conductivity coef (not used MB: 20140718)
+     REAL :: BVIC          !VIC model infiltration parameter [-]
+     REAL :: G             !Mean Capillary Drive (m) for infiltration models
 !------------------------------------------------------------------------------------------!
 ! From the GENPARM.TBL file
 !------------------------------------------------------------------------------------------!
@@ -7513,7 +7515,7 @@ ENDIF   ! CROPTYPE == 0
 
 !== begin dynamic VIC ==============================================================================
 
-  SUBROUTINE  DYNAMIC_VIC(parameters,DT,SMC,SH2O,SICE,SICEMAX,NSOIL,ZSOIL,FACC,PDDUM,RUNSRF)
+  SUBROUTINE  DYNAMIC_VIC(parameters,DT,SMC,SH2O,SICE,SICEMAX,NSOIL,ZSOIL,QINSUR,FACC,PDDUM,RUNSRF)
 ! --------------------------------------------------------------------------------
 ! compute inflitration rate at soil surface and estimate surface runoff based on 
 ! Liang, X., & Xie, Z. (2001). A new surface runoff parameterization with subgrid-scale
@@ -7528,6 +7530,7 @@ ENDIF   ! CROPTYPE == 0
   REAL, DIMENSION(1:NSOIL), INTENT(IN) :: ZSOIL         !depth of soil layer-bottom [m]
   REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SH2O          !soil liquid water content [m3/m3]
   REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SICE          !soil ice content [m3/m3]
+  REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SMC           !soil moisture content [m3/m3]
   REAL,                     INTENT(IN) :: QINSUR        !water input on soil surface [m/s]
   REAL,                     INTENT(IN) :: SICEMAX       !maximum soil ice content (m3/m3)
 
@@ -7538,7 +7541,7 @@ ENDIF   ! CROPTYPE == 0
   REAL,                    INTENT(OUT) :: RUNSRF        !surface runoff [mm/s] 
   REAL,                    INTENT(OUT) :: PDDUM         !infiltration rate at surface
 ! locals
-  INTEGER                              :: IZ
+  INTEGER                              :: IZ, OPT_INFDVIC
   REAL                                 :: BB            !B parameter for infiltration scaling curve
   REAL                                 :: TOP_MOIST     !actual water depth in top layers (m)
   REAL                                 :: TOP_MAX_MOIST !water depth in top layers (m)
@@ -7546,6 +7549,7 @@ ENDIF   ! CROPTYPE == 0
   REAL                                 :: I_0           !initial water depth (m)
   REAL                                 :: I_MAX         !maximum water depth (m)
   REAL                                 :: FSUR          !surface infiltration rate (m/s)
+  REAL                                 :: FMAX          !maximum infiltration rate (m/s)
   REAL                                 :: RUNOFFSAT     !saturation excess runoff (m/s)
   REAL                                 :: RUNOFFINF     !infiltration excess runoff (m/s)
   REAL                                 :: INFILTRTN     !infiltration (m/s)
@@ -7556,11 +7560,19 @@ ENDIF   ! CROPTYPE == 0
   REAL                                 :: YD            !initial depth Y (m)
   REAL                                 :: YD_OLD        !initial depth Y (m)
   REAL                                 :: YD0           !initial depth Y (m)
+  REAL                                 :: TEMP1
 !---------------------------------------------------------------------------------
 
   TOP_MOIST     = 0.0
   TOP_MAX_MOIST = 0.0
   BB            = 2.0 
+  DP            = 0.0
+  I_MAX         = 0.0
+  I_0           = 0.0
+  RUNOFFSAT     = 0.0
+  RUNOFFINF     = 0.0
+  INFILTRTN     = 0.0
+  OPT_INFDVIC   = 3
 
   DO IZ=1,NSOIL-2
     TOP_MOIST     = TOP_MOIST + (SMC(IZ)*-1*ZSOIL(IZ))                                     ! actual moisture in top layers, m
@@ -7717,7 +7729,7 @@ ENDIF   ! CROPTYPE == 0
           YD = DP/2.0
 
           DO  ! ITERATION1
-             YD_OLD = Y
+             YD_OLD = YD
              TEMPR1 = 0.0
              CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
              YD = TEMPR1 + ((FSUR*DT) * (1 - (1-((DP-TEMPR1)/(FMAX*DT))**(BB+1.0))))
@@ -7860,6 +7872,8 @@ END SUBROUTINE RR2
    REAL                                    :: WDF    ! soil water diffusivity       
    REAL                                    :: WCND   ! soil water conductivity[m/s]
    REAL                                    :: GAM    ! smith-parlang weighing parameter[-]
+   REAL                                    :: FMAX   ! Maximum infiltration (m/s)
+   REAL                                    :: JJ     ! dummy variable
    INTEGER                                 :: IALP1, J,  K, ISOIL   
 !---------------------------------------------------------------------------------
 
@@ -7868,7 +7882,7 @@ END SUBROUTINE RR2
 
 ! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
    ISOIL = 1
-   CALL WDFCND2 (parameters,WDF,WCND,SMC,SICE,ISOIL) 
+   CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL) 
 
 ! Maximum infiltrability based on the Eq. 6.25. (m/s)
    JJ   = parameters%G * (parameters%SMCMAX(1) - SMC(1)) * -1 * ZSOIL(1)
@@ -7910,12 +7924,14 @@ END SUBROUTINE RR2
 ! local variables
    REAL                                    :: WDF    ! soil water diffusivity
    REAL                                    :: WCND   ! soil water conductivity[m/s]
+   REAL                                    :: FMAX   ! Maximum infiltration (m/s)
+   REAL                                    :: JJ     ! dummy variable 
    INTEGER                                 :: IALP1, J,  K, ISOIL
 !---------------------------------------------------------------------------------
 
 ! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
    ISOIL = 1
-   CALL WDFCND2 (parameters,WDF,WCND,SMC,SICE,ISOIL)
+   CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL)
 
 ! Maximum infiltrability based on the Eq. 6.25. (m/s)
    JJ   = parameters%G * (parameters%SMCMAX(1) - SMC(1)) * -1 * ZSOIL(1)
@@ -7948,7 +7964,7 @@ END SUBROUTINE RR2
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SMC    !soil moisture content [m3/m3]
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SICE   !soil ice content [m3/m3]
    REAL,                     INTENT(IN) :: QINSUR !water input on soil surface [m/s]
-   INTEGER,                  INTENT(IN) :: DT     !time-step (sec)
+   REAL,                     INTENT(IN) :: DT     !time-step (sec)
 ! in outs
    REAL,                     INTENT(INOUT) :: FACC   !accumulated infiltration rate (m/s)
 ! outputs
@@ -7957,23 +7973,24 @@ END SUBROUTINE RR2
    REAL                                    :: WDF    ! soil water diffusivity (m2/s)
    REAL                                    :: WCND   ! soil water conductivity[m/s]
    REAL                                    :: SP     ! sorptivity (LT^-1/2)
-   REAL                                    :: AK     ! intial hydraulic conductivity (L/T)
+   REAL                                    :: AP     ! intial hydraulic conductivity (m/s,L/T)
+   REAL                                    :: FMAX   ! Maximum infiltration (m/s)
    INTEGER                                 :: IALP1, J,  K, ISOIL
 !---------------------------------------------------------------------------------
 
 ! estimate initial soil hydraulic conductivty and diffusivity (Ki, D(theta) in the equation)
    ISOIL = 1
-   CALL WDFCND2 (parameters,WDF,WCND,SMC,SICE,ISOIL)
+   CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL)
 
 ! Sorptivity based on Eq. 10b from Kutílek, Miroslav, and Jana Valentová (1986) 
 ! Sorptivity approximations. Transport in Porous Media 1.1, 57-62.
 
-   SP = SQRT(2 * (parameters%SMCMAX(1) - SMC(1)) * (parameters%DWSAT(1) - WDF)) 
+   SP = SQRT(2 * (parameters%SMCMAX(ISOIL) - SMC(ISOIL)) * (parameters%DWSAT(ISOIL) - WDF)) 
 
 ! Parameter A in Eq. 9 of Valiantzas (2010) is given by
 
-   AP = MIN(WCND, (2/3)*parameters%DKSAT)
-   AP = MAX(AP,    (1/3)*parameters%DKSAT)
+   AP = MIN(WCND, (2/3)*parameters%DKSAT(ISOIL))
+   AP = MAX(AP,    (1/3)*parameters%DKSAT(ISOIL))
 
 ! Maximun infiltration rate, m
 
@@ -9607,7 +9624,9 @@ MODULE NOAHMP_TABLES
     REAL :: DKSAT_TABLE(MAX_SOILTYP)       !tree crown radius (m)
     REAL :: DWSAT_TABLE(MAX_SOILTYP)       !monthly stem area index, one-sided
     REAL :: SMCWLT_TABLE(MAX_SOILTYP)      !monthly leaf area index, one-sided
-    REAL :: QUARTZ_TABLE(MAX_SOILTYP)         !single-side leaf area per Kg [m2/kg]
+    REAL :: QUARTZ_TABLE(MAX_SOILTYP)      !single-side leaf area per Kg [m2/kg]
+    REAL :: BVIC_TABLE(MAX_SOILTYP)        !VIC model infiltration parameter (-)
+    REAL :: G_TABLE(MAX_SOILTYP)           !mean capilary drive (m)
 
 ! GENPARM.TBL parameters
 
@@ -10013,7 +10032,8 @@ CONTAINS
        FRZK_TABLE = -1.E36
        ZBOT_TABLE = -1.E36
        CZIL_TABLE = -1.E36
-
+       BVIC_TABLE = -1.E36
+          G_TABLE = -1.E36
 !
 !-----READ IN SOIL PROPERTIES FROM SOILPARM.TBL
 !
@@ -10041,7 +10061,7 @@ CONTAINS
     DO LC=1,SLCATS
       READ (21,*) ITMP,BEXP_TABLE(LC),SMCDRY_TABLE(LC),F1_TABLE(LC),SMCMAX_TABLE(LC),    &
                   SMCREF_TABLE(LC),PSISAT_TABLE(LC),DKSAT_TABLE(LC), DWSAT_TABLE(LC),   &
-                  SMCWLT_TABLE(LC), QUARTZ_TABLE(LC)
+                  SMCWLT_TABLE(LC), QUARTZ_TABLE(LC), BVIC_TABLE(LC), G_TABLE(LC)
     ENDDO
 
     CLOSE (21)
