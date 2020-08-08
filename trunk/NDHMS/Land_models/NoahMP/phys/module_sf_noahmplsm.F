@@ -7025,6 +7025,11 @@ ENDIF   ! CROPTYPE == 0
                       PDDUM  ,RUNSRF )                           !out
        END IF
 
+       IF(QINSUR > 0. .and. OPT_RUN == 6) THEN
+          CALL COMPUTE_VIC_SURFRUNOFF(parameters,DTFINE,NSOIL,SMC,ZSOIL,QINSUR,& !in
+                                      FSAT,RUNSRF,PDDUM)                         !out
+       END IF
+
        CALL SRT   (parameters,NSOIL  ,ZSOIL  ,DTFINE ,PDDUM  ,ETRANI , & !in
                    QSEVA  ,SH2O   ,SMC    ,ZWT    ,FCR    , & !in
                    SICEMAX,FCRMAX ,ILOC   ,JLOC   ,SMCWTD ,         & !in
