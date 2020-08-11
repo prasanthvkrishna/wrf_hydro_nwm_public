@@ -117,6 +117,7 @@ module module_NoahMP_hrldas_driver
   INTEGER                                 ::  IOPT_SOIL ! soil configuration option
   INTEGER                                 ::  IOPT_PEDO ! soil pedotransfer function option
   INTEGER                                 ::  IOPT_CROP ! crop model option (0->none; 1->Liu et al.)
+  INTEGER                                 ::  IOPT_INFDV!infiltration options for dynamic VIC (1->Philip; 2-> Green-Ampt;3->Smith-Parlange)
   REAL,    ALLOCATABLE, DIMENSION(:,:,:)  ::  T_PHY     ! 3D atmospheric temperature valid at mid-levels [K]
   REAL,    ALLOCATABLE, DIMENSION(:,:,:)  ::  QV_CURR   ! 3D water vapor mixing ratio [kg/kg_dry]
   REAL,    ALLOCATABLE, DIMENSION(:,:,:)  ::  U_PHY     ! 3D U wind component [m/s]
@@ -155,6 +156,9 @@ module module_NoahMP_hrldas_driver
   REAL, ALLOCATABLE, DIMENSION(:,:)       ::  hvt_2D     ! Canopy Height
   REAL, ALLOCATABLE, DIMENSION(:,:)       ::  mfsno_2D   ! Snow cover m parameter
   REAL, ALLOCATABLE, DIMENSION(:,:)       ::  rsurfexp_2D! exponent in the shape parameter for soil resistance option 1
+  REAL, ALLOCATABLE, DIMENSION(:,:)       ::  bvic_2d    ! VIC model infiltration parameter [-]
+  REAL, ALLOCATABLE, DIMENSION(:,:)       ::  g_2d       ! Mean Capillary Drive (m) for infiltration models
+  REAL, ALLOCATABLE, DIMENSION(:,:)       ::  bbvic_2d   ! DVIC heterogeniety parameter for infiltration [-]
 #endif
 
 ! INOUT (with generic LSM equivalent) (as defined in WRF)
@@ -437,6 +441,7 @@ module module_NoahMP_hrldas_driver
   IOPT_SOIL = noah_lsm%soil_data_option
   IOPT_PEDO = noah_lsm%pedotransfer_option
   IOPT_CROP = noah_lsm%crop_option
+  IOPT_INFDV= noah_lsm%dvic_infiltration_option
 
   khour = noah_lsm%khour
 
@@ -738,6 +743,9 @@ module module_NoahMP_hrldas_driver
   ALLOCATE ( hvt_2D     (XSTART:XEND,YSTART:YEND) )            ! Canopy Height
   ALLOCATE ( mfsno_2D   (XSTART:XEND,YSTART:YEND) )            ! Snow cover m parameter
   ALLOCATE ( rsurfexp_2D(XSTART:XEND,YSTART:YEND) )            ! exponent in the shape parameter for soil resistance option 1
+  ALLOCATE ( bvic_2D    (XSTART:XEND,YSTART:YEND) )            ! VIC model infiltration parameter [-]
+  ALLOCATE ( g_2D       (XSTART:XEND,YSTART:YEND) )            ! Mean Capillary Drive (m) for infiltration models
+  ALLOCATE ( bbvic_2D   (XSTART:XEND,YSTART:YEND) )            ! DVIC heterogeniety parameter for infiltration [-]
 #endif
 
 ! INOUT (with generic LSM equivalent) (as defined in WRF)
@@ -1082,7 +1090,8 @@ module module_NoahMP_hrldas_driver
     CALL READ_3D_SOIL(noah_lsm%SPATIAL_FILENAME, XSTART, XEND, YSTART, YEND, &
                       NSOIL,BEXP_3D,SMCDRY_3D,SMCWLT_3D,SMCREF_3D,SMCMAX_3D,  &
 		      DKSAT_3D,DWSAT_3D,PSISAT_3D,QUARTZ_3D,REFDK_2D,REFKDT_2D,&
-		      SLOPE_2D,CWPVT_2D,VCMX25_2D,MP_2D,HVT_2D,MFSNO_2D,RSURFEXP_2D)
+		      SLOPE_2D,CWPVT_2D,VCMX25_2D,MP_2D,HVT_2D,MFSNO_2D,RSURFEXP_2D, &
+                      BVIC_2D,G_2D,BBVIC_2D)
 #endif
 
 !------------------------------------------------------------------------
@@ -1648,12 +1657,13 @@ end subroutine land_driver_ini
                  BGAPXY,   WGAPXY,    TGVXY,    TGBXY,     CHVXY,      CHBXY, &
 		  SHGXY,    SHCXY,    SHBXY,    EVGXY,     EVBXY,      GHVXY, &
 		  GHBXY,    IRGXY,    IRCXY,    IRBXY,      TRXY,      EVCXY, &
-	       CHLEAFXY,   CHUCXY,   CHV2XY,   CHB2XY,                        &
+	       CHLEAFXY,   CHUCXY,   CHV2XY,   CHB2XY,     IOPT_INFDV,        &
 #ifdef SPATIAL_SOIL
                  BEXP_3D,SMCDRY_3D,SMCWLT_3D,SMCREF_3D,SMCMAX_3D,             &
 		 DKSAT_3D,DWSAT_3D,PSISAT_3D,QUARTZ_3D,                       &
 		 REFDK_2D,REFKDT_2D,SLOPE_2D,                                 &
 		 CWPVT_2D,VCMX25_2D,MP_2D,HVT_2D,MFSNO_2D,RSURFEXP_2D,        &
+                 BVIC_2D,G_2D,BBVIC_2D,                                       &
 #endif
 #ifdef WRF_HYDRO
                  sfcheadrt,INFXSRT,soldrain,                          &    !O

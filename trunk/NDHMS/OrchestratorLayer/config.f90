@@ -40,6 +40,7 @@ module config_base
      integer            :: soil_data_option = 1
      integer            :: pedotransfer_option = 0
      integer            :: crop_option = 0
+     integer            :: dvic_infiltration_option = 3
 
      integer            :: split_output_count = 1
      integer            :: khour
@@ -880,6 +881,7 @@ contains
      integer            :: soil_data_option = 1
      integer            :: pedotransfer_option = 0
      integer            :: crop_option = 0
+     integer            :: dvic_infiltration_option = 3
      integer            :: split_output_count = 1
      integer            :: khour = -999
      integer            :: kday = -999
@@ -911,6 +913,8 @@ contains
          frozen_soil_option, radiative_transfer_option, snow_albedo_option, &
          pcp_partition_option, tbot_option, temp_time_scheme_option, &
          glacier_option, surface_resistance_option, &
+         soil_data_option, pedotransfer_option, crop_option, &
+         dvic_infiltration_option,&
 
          split_output_count, &
          khour, kday, zlvl, hrldas_setup_file, mmf_runoff_file, &
@@ -1011,6 +1015,7 @@ contains
     noah_lsm%soil_data_option = soil_data_option
     noah_lsm%pedotransfer_option = pedotransfer_option
     noah_lsm%crop_option = crop_option
+    noah_lsm%dvic_infiltration_option = dvic_infiltration_option
 
     noah_lsm%split_output_count = split_output_count
 

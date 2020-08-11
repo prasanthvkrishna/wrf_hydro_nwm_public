@@ -169,6 +169,10 @@ MODULE MODULE_SF_NOAHMPLSM
                       ! **0 -> No crop model, will run default dynamic vegetation
                       !   1 -> Liu, et al. 2016
 
+  INTEGER :: OPT_INFDV! options for infiltration in dynamic VIC runoff scheme
+                      ! **1 -> Philip scheme
+                      !   2 -> Green-Ampt scheme
+                      !   3 -> Smith-Parlange scheme
 !------------------------------------------------------------------------------------------!
 ! Physical Constants:                                                                      !
 !------------------------------------------------------------------------------------------!
@@ -361,8 +365,9 @@ MODULE MODULE_SF_NOAHMPLSM
      REAL :: DWSAT(NSOIL)  !saturated soil hydraulic diffusivity
      REAL :: QUARTZ(NSOIL) !soil quartz content
      REAL :: F1            !soil thermal diffusivity/conductivity coef (not used MB: 20140718)
-     REAL :: BVIC          !VIC model infiltration parameter [-]
+     REAL :: BVIC          !DVIC model infiltration parameter [-]
      REAL :: G             !Mean Capillary Drive (m) for infiltration models
+     REAL :: BBVIC         !DVIC heterogeniety parameter for infiltration 
 !------------------------------------------------------------------------------------------!
 ! From the GENPARM.TBL file
 !------------------------------------------------------------------------------------------!
@@ -6901,6 +6906,7 @@ ENDIF   ! CROPTYPE == 0
   INTEGER                                 :: NITER  !iteration times soil moisture (-)
   REAL                                    :: SMCTOT !2-m averaged soil moisture (m3/m3)
   REAL                                    :: DZTOT  !2-m soil depth (m)
+  REAL                                    :: FACC   !accumulated infiltration rate (m/s)
   REAL, PARAMETER :: A = 4.0
 ! ----------------------------------------------------------------------
     RUNSRF = 0.0
@@ -6997,7 +7003,11 @@ ENDIF   ! CROPTYPE == 0
          PDDUM  = QINSUR - RUNSRF                       ! m/s
        END IF
     END IF
-
+ 
+    IF(OPT_RUN == 8)THEN
+       FACC = 1E-06
+       CALL DYNAMIC_VIC(parameters,DT,SMC,SH2O,SICE,SICEMAX,NSOIL,ZSOIL,QINSUR,FACC,PDDUM,RUNSRF)
+    END IF
 ! determine iteration times and finer time step
 
     NITER = 1
@@ -7013,6 +7023,7 @@ ENDIF   ! CROPTYPE == 0
 
 ! solve soil moisture
 
+    FACC        = 1E-06
     QDRAIN_SAVE = 0.0
     RUNSRF_SAVE = 0.0
     DO ITER = 1, NITER
@@ -7022,11 +7033,16 @@ ENDIF   ! CROPTYPE == 0
                       PDDUM  ,RUNSRF )                           !out
        END IF
 
+       IF(QINSUR > 0. .and. OPT_RUN == 8) THEN
+          CALL DYNAMIC_VIC(parameters,DTFINE,SMC,SH2O,SICE,SICEMAX,NSOIL,&
+                           ZSOIL,QINSUR,FACC,PDDUM,RUNSRF)
+       END IF
+
        CALL SRT   (parameters,NSOIL  ,ZSOIL  ,DTFINE ,PDDUM  ,ETRANI , & !in
                    QSEVA  ,SH2O   ,SMC    ,ZWT    ,FCR    , & !in
                    SICEMAX,FCRMAX ,ILOC   ,JLOC   ,SMCWTD ,         & !in
                    RHSTT  ,AI     ,BI     ,CI     ,QDRAIN , & !out
-                   WCND   )                                   !out
+                   WCND)                                      !out
   
        CALL SSTEP (parameters,NSOIL  ,NSNOW  ,DTFINE ,ZSOIL  ,DZSNSO , & !in
                    SICE   ,ILOC   ,JLOC   ,ZWT            ,                 & !in
@@ -7345,7 +7361,7 @@ ENDIF   ! CROPTYPE == 0
           IF(OPT_RUN == 1 .or. OPT_RUN == 2) THEN
              QDRAIN   = 0.
           END IF
-          IF(OPT_RUN == 3) THEN
+          IF(OPT_RUN == 3 .OR. OPT_RUN == 8) THEN
              QDRAIN   = parameters%SLOPE*WCND(K)
           END IF
           IF(OPT_RUN == 4) THEN
@@ -7541,7 +7557,6 @@ ENDIF   ! CROPTYPE == 0
   REAL,                    INTENT(OUT) :: RUNSRF        !surface runoff [mm/s] 
   REAL,                    INTENT(OUT) :: PDDUM         !infiltration rate at surface
 ! locals
-  INTEGER                              :: IZ, OPT_INFDVIC
   REAL                                 :: BB            !B parameter for infiltration scaling curve
   REAL                                 :: TOP_MOIST     !actual water depth in top layers (m)
   REAL                                 :: TOP_MAX_MOIST !water depth in top layers (m)
@@ -7561,38 +7576,51 @@ ENDIF   ! CROPTYPE == 0
   REAL                                 :: YD_OLD        !initial depth Y (m)
   REAL                                 :: YD0           !initial depth Y (m)
   REAL                                 :: TEMP1
+  INTEGER                              :: IZ, INFLMAX
 !---------------------------------------------------------------------------------
 
   TOP_MOIST     = 0.0
   TOP_MAX_MOIST = 0.0
-  BB            = 2.0 
+  BB            = 1.0 
   DP            = 0.0
   I_MAX         = 0.0
   I_0           = 0.0
   RUNOFFSAT     = 0.0
   RUNOFFINF     = 0.0
   INFILTRTN     = 0.0
-  OPT_INFDVIC   = 3
+  RUNSRF        = 0.0
+
+  BB = parameters%BBVIC
 
   DO IZ=1,NSOIL-2
-    TOP_MOIST     = TOP_MOIST + (SMC(IZ)*-1*ZSOIL(IZ))                                     ! actual moisture in top layers, m
-    TOP_MAX_MOIST = TOP_MAX_MOIST + (parameters%SMCMAX(IZ)*-1*ZSOIL(IZ))                   ! maximum moisture in top layers, m  
+    TOP_MOIST     = TOP_MOIST + (SMC(IZ)*-1*ZSOIL(IZ))                                   ! actual moisture in top layers, [m]
+    TOP_MAX_MOIST = TOP_MAX_MOIST + (parameters%SMCMAX(IZ)*-1*ZSOIL(IZ))                 ! maximum moisture in top layers, [m]  
   END DO
   IF(TOP_MOIST .GT. TOP_MAX_MOIST) TOP_MOIST = TOP_MAX_MOIST  
 
-  DP     = QINSUR * DT                                                                   ! precipitation depth, m
-  I_MAX  = TOP_MAX_MOIST * (parameters%BVIC+1.0)                                         ! maximum infiltration, m, Eq. 14
-  I_0    = I_MAX * (1-(1-(TOP_MOIST/TOP_MAX_MOIST)**(1.0/(1.0+parameters%BVIC))))        ! i in the Eq. 1
+  DP     = QINSUR * DT                                                                   ! precipitation depth, [m]
+  I_MAX  = TOP_MAX_MOIST * (parameters%BVIC+1.0)                                         ! maximum infiltration capacity, im, [m], Eq. 14
+  I_0    = I_MAX * (1-(1-(TOP_MOIST/TOP_MAX_MOIST)**(1.0/(1.0+parameters%BVIC))))        ! infiltration capacity, i [m] in the Eq. 1
 
   ! I_MAX = CAP_minf ; I_0 = A  
 
   ! Call infiltration option one from three 1 = Philip, 2 = Green-Ampt, 3 = Smith-Parlange
-  IF (OPT_INFDVIC .EQ. 1) THEN
-     CALL PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FSUR)
-  ELSE IF (OPT_INFDVIC .EQ. 2) THEN
-     CALL GREEN_AMPT_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR)
-  ELSE IF (OPT_INFDVIC .EQ. 3) THEN
-     CALL SMITH_PARLANGE_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR)
+  !INFLMAX = 1
+  !IF (OPT_INFVIC .EQ. 1) THEN
+  !   CALL PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FMAX,INFLMAX)
+  !ELSE IF (OPT_INFVIC .EQ. 2) THEN
+  !   CALL GREEN_AMPT_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FMAX,INFLMAX)
+  !ELSE IF (OPT_INFVIC .EQ. 3) THEN
+  !   CALL SMITH_PARLANGE_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FMAX,INFLMAX)
+  !END IF
+
+  INFLMAX = 0
+  IF (OPT_INFDV .EQ. 1) THEN
+     CALL PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FSUR,INFLMAX)
+  ELSE IF (OPT_INFDV .EQ. 2) THEN
+     CALL GREEN_AMPT_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
+  ELSE IF (OPT_INFDV .EQ. 3) THEN
+     CALL SMITH_PARLANGE_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
   END IF
 
   ! I_MM = FSUR; I_M = FMAX  
@@ -7613,9 +7641,8 @@ ENDIF   ! CROPTYPE == 0
       INFILTRTN = 0.0
       GOTO 2001
     ELSE
-      I_0       = I_MAX * (1-(1-(TOP_MOIST/TOP_MAX_MOIST)**(1.0/(1.0+parameters%BVIC))))     
+      I_0 = I_MAX * (1-(1-(TOP_MOIST/TOP_MAX_MOIST)**(1.0/(1.0+parameters%BVIC))))     
       IF((DP+I_0) .GT. I_MAX)THEN
-
         IF((FMAX*DT) .GE. DP) THEN
           YD     = I_MAX - I_0
           TEMPR1 = 0.0
@@ -7685,7 +7712,7 @@ ENDIF   ! CROPTYPE == 0
                YD_OLD = YD
                TEMPR1 = 0.0
                CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
-               YD     = YD - TEMPR1 + (FSUR*DT) + DP
+               YD     = YD - TEMPR1 - (FSUR*DT) + DP
                IF (YD .LE. 0.0) YD = 0.0
                IF (YD .GE. DP) YD = DP
                IF (ABS(YD-YD_OLD) .LE. 1E-05) THEN
@@ -7706,8 +7733,7 @@ ENDIF   ! CROPTYPE == 0
                END IF 
             END DO
 
-1001        CONTINUE
-            IF(YD .LE. 0.0) YD = 0.0
+1001        IF(YD .LE. 0.0) YD = 0.0
             IF(YD .GE. DP) YD = DP
             CALL RR1(parameters,I_0,I_MAX,YD,R1)
             RUNOFFSAT = R1
@@ -7762,7 +7788,7 @@ ENDIF   ! CROPTYPE == 0
                  IF(YD .GE. DP) YD = DP
                  TEMPR1 = 0.0
                  CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
-                 IF(ABS(TEMPR1+(FMAX*DT)-DP).LE. 1E-05)THEN
+                 IF(ABS(TEMPR1+(FMAX*DT)-DP) .LE. 1E-05)THEN
                     YD0 = YD
                     EXIT
                  END IF
@@ -7781,8 +7807,7 @@ ENDIF   ! CROPTYPE == 0
           END IF
         END IF
 
-1002    CONTINUE
-        IF(YD .LE. 0.0) YD = 0.0
+1002    IF(YD .LE. 0.0) YD = 0.0
         IF(YD .GE. DP)  YD = DP
         R1 = 0.0
         CALL RR1(parameters,I_0,I_MAX,YD,R1)
@@ -7800,9 +7825,10 @@ ENDIF   ! CROPTYPE == 0
     END IF
   END IF
     
-2001 CONTINUE
-  
-
+2001 RUNSRF = (RUNOFFSAT + RUNOFFINF)/DT
+     RUNSRF = MIN(RUNSRF,QINSUR)
+     RUNSRF = MAX(RUNSRF,0.0)
+     PDDUM  = QINSUR - RUNSRF
   END SUBROUTINE DYNAMIC_VIC
 
 ! ---------------------------  Runoff subroutines for dynamic VIC ----------------------------
@@ -7851,7 +7877,7 @@ END SUBROUTINE RR2
 
 !== begin smith-parlange infiltration ===============================================================
 
-  SUBROUTINE SMITH_PARLANGE_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR)
+  SUBROUTINE SMITH_PARLANGE_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
 !---------------------------------------------------------------------------------------------
 ! This function estimate infiltration rate based on Smith-Parlange equation. We use its three
 ! parameter version of the equation (Eq. 6.25) from Smith, R.E. (2002) Infiltration Theory for
@@ -7864,6 +7890,7 @@ END SUBROUTINE RR2
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SMC    !soil moisture content [m3/m3]
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SICE   !soil ice content [m3/m3]
    REAL,                     INTENT(IN) :: QINSUR !water input on soil surface [m/s]
+   INTEGER,                  INTENT(IN) :: INFLMAX!check for maximum infiltration at SMCWLT
 ! in outs
    REAL,                     INTENT(INOUT) :: FACC   !accumulated infiltration rate (m/s)
 ! outputs
@@ -7872,39 +7899,56 @@ END SUBROUTINE RR2
    REAL                                    :: WDF    ! soil water diffusivity       
    REAL                                    :: WCND   ! soil water conductivity[m/s]
    REAL                                    :: GAM    ! smith-parlang weighing parameter[-]
-   REAL                                    :: FMAX   ! Maximum infiltration (m/s)
    REAL                                    :: JJ     ! dummy variable
-   INTEGER                                 :: IALP1, J,  K, ISOIL   
+   INTEGER                                 :: ISOIL   
 !---------------------------------------------------------------------------------
 
-! smith-parlang weighing parameter, GAMMA
+   ! smith-parlang weighing parameter, GAMMA
    GAM = 0.82 
-
-! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
    ISOIL = 1
-   CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL) 
 
-! Maximum infiltrability based on the Eq. 6.25. (m/s)
-   JJ   = parameters%G * (parameters%SMCMAX(1) - SMC(1)) * -1 * ZSOIL(1)
-   FMAX = parameters%DKSAT(1) + (GAM * (parameters%DKSAT(1) - WCND) / (EXP(GAM * FACC / JJ) -1))
+   ! check whether we are estimating infiltration for current SMC or SMCWLT
+   IF (INFLMAX .EQ. 1)THEN
 
-! infiltration rate at surface  
-   IF(parameters%DKSAT(1) .LT. QINSUR)THEN
-      FSUR = MIN(QINSUR,FMAX)
+      ! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
+      CALL WDFCND2 (parameters,WDF,WCND,parameters%SMCWLT(ISOIL),0.0,ISOIL) 
+
+      ! Maximum infiltrability based on the Eq. 6.25. (m/s)
+      JJ   = parameters%G * (parameters%SMCMAX(ISOIL) - parameters%SMCWLT(ISOIL)) * -1 * ZSOIL(ISOIL)
+      FSUR = parameters%DKSAT(ISOIL) + (GAM * (parameters%DKSAT(ISOIL) - WCND) / (EXP(GAM * 1E-05 / JJ) -1))
+
+      ! infiltration rate at surface
+      IF(parameters%DKSAT(ISOIL) .LT. QINSUR)THEN
+        FSUR = MIN(QINSUR,FSUR)
+      ELSE
+        FSUR = QINSUR
+      END IF
+      IF(FSUR .LT. 0.0) FSUR = 0.0
    ELSE
-      FSUR = QINSUR
-   END IF 
-  
-! accumulated infiltration function
-   FACC = FACC + FSUR 
+      ! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
+      CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL)
 
+      ! Maximum infiltrability based on the Eq. 6.25. (m/s)
+      JJ   = parameters%G * (parameters%SMCMAX(ISOIL) - SMC(ISOIL)) * -1 * ZSOIL(ISOIL)
+      FSUR = parameters%DKSAT(ISOIL) + (GAM * (parameters%DKSAT(ISOIL) - WCND) / (EXP(GAM * FACC / JJ) -1))
+
+      ! infiltration rate at surface  
+      IF(parameters%DKSAT(ISOIL) .LT. QINSUR)THEN
+        FSUR = MIN(QINSUR,FSUR)
+      ELSE
+        FSUR = QINSUR
+      END IF 
+  
+      ! accumulated infiltration function
+      FACC = FACC + FSUR 
+   END IF
   END SUBROUTINE SMITH_PARLANGE_INFIL
 
 !== end smith-parlang infiltration =================================================================
 
 !== begin Green_Ampt infiltration ==================================================================
 
-  SUBROUTINE GREEN_AMPT_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR)
+  SUBROUTINE GREEN_AMPT_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
 !-------------------------------------------------------------------------------------------------
 ! This function estimate infiltration rate based on Green-Ampt equation. We use its three
 ! parameter version of the smith-parlage equation (Eq. 6.25) from Smith, R.E. (2002) Infiltration Theory for
@@ -7917,6 +7961,7 @@ END SUBROUTINE RR2
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SMC    !soil moisture content [m3/m3]
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SICE   !soil ice content [m3/m3]
    REAL,                     INTENT(IN) :: QINSUR !water input on soil surface [m/s]
+   INTEGER,                  INTENT(IN) :: INFLMAX!check for maximum infiltration at SMCWLT
 ! in outs
    REAL,                     INTENT(INOUT) :: FACC   !accumulated infiltration rate (m/s)
 ! outputs
@@ -7924,35 +7969,47 @@ END SUBROUTINE RR2
 ! local variables
    REAL                                    :: WDF    ! soil water diffusivity
    REAL                                    :: WCND   ! soil water conductivity[m/s]
-   REAL                                    :: FMAX   ! Maximum infiltration (m/s)
    REAL                                    :: JJ     ! dummy variable 
-   INTEGER                                 :: IALP1, J,  K, ISOIL
+   INTEGER                                 :: ISOIL
 !---------------------------------------------------------------------------------
 
-! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
    ISOIL = 1
-   CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL)
 
-! Maximum infiltrability based on the Eq. 6.25. (m/s)
-   JJ   = parameters%G * (parameters%SMCMAX(1) - SMC(1)) * -1 * ZSOIL(1)
-   FMAX = parameters%DKSAT(1) + ((JJ/FACC) * (parameters%DKSAT(1) - WCND))
+   IF(INFLMAX .EQ. 1)THEN
+     ! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
+     CALL WDFCND2 (parameters,WDF,WCND,parameters%SMCWLT(ISOIL),0.0,ISOIL)
 
-! infiltration rate at surface
-   IF(parameters%DKSAT(1) .LT. QINSUR)THEN
-      FSUR = MIN(QINSUR,FMAX)
-   ELSE
-      FSUR = QINSUR
+     ! Maximum infiltrability based on the Eq. 6.25. (m/s)
+     JJ   = parameters%G * (parameters%SMCMAX(ISOIL) - parameters%SMCWLT(ISOIL)) * -1 * ZSOIL(ISOIL)
+     FSUR = parameters%DKSAT(ISOIL) + ((JJ/1E-05) * (parameters%DKSAT(ISOIL) - WCND))
+
+     !maximum infiltration rate at surface
+     IF(FSUR .LT. 0.0) FSUR = 0.0
+
+   ELSE 
+     ! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
+     CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL)
+
+     ! Maximum infiltrability based on the Eq. 6.25. (m/s)
+     JJ   = parameters%G * (parameters%SMCMAX(ISOIL) - SMC(ISOIL)) * -1 * ZSOIL(ISOIL)
+     FSUR = parameters%DKSAT(ISOIL) + ((JJ/FACC) * (parameters%DKSAT(ISOIL) - WCND))
+
+     ! infiltration rate at surface
+     IF(parameters%DKSAT(ISOIL) .LT. QINSUR)THEN
+        FSUR = MIN(QINSUR,FSUR)
+     ELSE
+        FSUR = QINSUR
+     END IF
+
+     ! accumulated infiltration function
+     FACC = FACC + FSUR
    END IF
-
-! accumulated infiltration function
-   FACC = FACC + FSUR
-
   END SUBROUTINE GREEN_AMPT_INFIL
 !== end Green-Ampt infiltration ====================================================================
 
 !== begin Philip's infiltration ====================================================================
 
-  SUBROUTINE PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FSUR)
+  SUBROUTINE PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FSUR,INFLMAX)
 !-------------------------------------------------------------------------------------------------------
 ! This function estimate infiltration rate based on Philip's two parameter equation (Eq. 2) presented in
 ! Valiantzas (2010). New linearized two-parameter infiltration equation for direct determination 
@@ -7965,6 +8022,7 @@ END SUBROUTINE RR2
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SICE   !soil ice content [m3/m3]
    REAL,                     INTENT(IN) :: QINSUR !water input on soil surface [m/s]
    REAL,                     INTENT(IN) :: DT     !time-step (sec)
+   INTEGER,                  INTENT(IN) :: INFLMAX!check for maximum infiltration at SMCWLT 
 ! in outs
    REAL,                     INTENT(INOUT) :: FACC   !accumulated infiltration rate (m/s)
 ! outputs
@@ -7975,37 +8033,51 @@ END SUBROUTINE RR2
    REAL                                    :: SP     ! sorptivity (LT^-1/2)
    REAL                                    :: AP     ! intial hydraulic conductivity (m/s,L/T)
    REAL                                    :: FMAX   ! Maximum infiltration (m/s)
-   INTEGER                                 :: IALP1, J,  K, ISOIL
+   INTEGER                                 :: ISOIL
 !---------------------------------------------------------------------------------
 
-! estimate initial soil hydraulic conductivty and diffusivity (Ki, D(theta) in the equation)
    ISOIL = 1
-   CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL)
 
-! Sorptivity based on Eq. 10b from Kutílek, Miroslav, and Jana Valentová (1986) 
-! Sorptivity approximations. Transport in Porous Media 1.1, 57-62.
+   IF (INFLMAX .EQ. 1) THEN
+     ! estimate initial soil hydraulic conductivty and diffusivity (Ki, D(theta) in the equation)
+     CALL WDFCND2 (parameters,WDF,WCND,parameters%SMCWLT(ISOIL),0.0,ISOIL)
 
-   SP = SQRT(2 * (parameters%SMCMAX(ISOIL) - SMC(ISOIL)) * (parameters%DWSAT(ISOIL) - WDF)) 
+     ! Sorptivity based on Eq. 10b from Kutílek, Miroslav, and Jana Valentová (1986)
+     ! Sorptivity approximations. Transport in Porous Media 1.1, 57-62.
+     SP = SQRT(2 * (parameters%SMCMAX(ISOIL) - parameters%SMCWLT(ISOIL)) * (parameters%DWSAT(ISOIL) - WDF))
 
-! Parameter A in Eq. 9 of Valiantzas (2010) is given by
+     ! Parameter A in Eq. 9 of Valiantzas (2010) is given by
+     AP = MIN(WCND, (2/3)*parameters%DKSAT(ISOIL))
+     AP = MAX(AP,   (1/3)*parameters%DKSAT(ISOIL))
 
-   AP = MIN(WCND, (2/3)*parameters%DKSAT(ISOIL))
-   AP = MAX(AP,    (1/3)*parameters%DKSAT(ISOIL))
+     ! Maximun infiltration rate, m
+     FSUR = (1/2)*SP*(DT**(-1/2))+AP ! m/s
+     IF(FSUR .LT. 0.0) FSUR = 0.0
+   ELSE 
+     ! estimate initial soil hydraulic conductivty and diffusivity (Ki, D(theta) in the equation)
+     CALL WDFCND2 (parameters,WDF,WCND,SMC(ISOIL),SICE(ISOIL),ISOIL)
 
-! Maximun infiltration rate, m
+     ! Sorptivity based on Eq. 10b from Kutílek, Miroslav, and Jana Valentová (1986) 
+     ! Sorptivity approximations. Transport in Porous Media 1.1, 57-62.
+     SP = SQRT(2 * (parameters%SMCMAX(ISOIL) - SMC(ISOIL)) * (parameters%DWSAT(ISOIL) - WDF)) 
 
-   FMAX = (1/2)*SP*(DT**(-1/2))+AP ! m/s
+     ! Parameter A in Eq. 9 of Valiantzas (2010) is given by
+     AP = MIN(WCND, (2/3)*parameters%DKSAT(ISOIL))
+     AP = MAX(AP,   (1/3)*parameters%DKSAT(ISOIL))
 
-! infiltration rate at surface
-   IF(parameters%DKSAT(1) .LT. QINSUR)THEN
-      FSUR = MIN(QINSUR,FMAX)
-   ELSE
-      FSUR = QINSUR
+     ! Maximun infiltration rate, m
+     FSUR = (1/2)*SP*(DT**(-1/2))+AP ! m/s
+
+     ! infiltration rate at surface
+     IF(parameters%DKSAT(ISOIL) .LT. QINSUR)THEN
+       FSUR = MIN(QINSUR,FSUR)
+     ELSE
+       FSUR = QINSUR
+     END IF
+
+     ! accumulated infiltration function
+     FACC = FACC + FSUR
    END IF
-
-! accumulated infiltration function
-   FACC = FACC + FSUR
-
   END SUBROUTINE PHILIP_INFIL
 !== end Phillips infiltration ======================================================================
 
@@ -9486,7 +9558,7 @@ END SUBROUTINE PSN_CROP
 
   subroutine noahmp_options(idveg     ,iopt_crs  ,iopt_btr  ,iopt_run  ,iopt_sfc  ,iopt_frz , & 
                              iopt_inf  ,iopt_rad  ,iopt_alb  ,iopt_snf  ,iopt_tbot, iopt_stc, &
-			     iopt_rsf , iopt_soil, iopt_pedo, iopt_crop )
+			     iopt_rsf , iopt_soil, iopt_pedo, iopt_crop, iopt_infdv )
 
   implicit none
 
@@ -9508,6 +9580,7 @@ END SUBROUTINE PSN_CROP
   INTEGER,  INTENT(IN) :: iopt_soil !soil parameters set-up option
   INTEGER,  INTENT(IN) :: iopt_pedo !pedo-transfer function (1->Saxton and Rawls)
   INTEGER,  INTENT(IN) :: iopt_crop !crop model option (0->none; 1->Liu et al.)
+  INTEGER,  INTENT(IN) :: iopt_infdv!infiltration options for dynamic VIC (1->Philip; 2-> Green-Ampt;3->Smith-Parlange)
 
 ! -------------------------------------------------------------------------------------------------
 
@@ -9528,6 +9601,7 @@ END SUBROUTINE PSN_CROP
   opt_soil = iopt_soil
   opt_pedo = iopt_pedo
   opt_crop = iopt_crop
+  opt_infdv= iopt_infdv
   
   end subroutine noahmp_options
  
@@ -9627,6 +9701,7 @@ MODULE NOAHMP_TABLES
     REAL :: QUARTZ_TABLE(MAX_SOILTYP)      !single-side leaf area per Kg [m2/kg]
     REAL :: BVIC_TABLE(MAX_SOILTYP)        !VIC model infiltration parameter (-)
     REAL :: G_TABLE(MAX_SOILTYP)           !mean capilary drive (m)
+    REAL :: BBVIC_TABLE(MAX_SOILTYP)       !heterogeniety parameter for DVIC infiltration [-]
 
 ! GENPARM.TBL parameters
 
@@ -10034,6 +10109,7 @@ CONTAINS
        CZIL_TABLE = -1.E36
        BVIC_TABLE = -1.E36
           G_TABLE = -1.E36
+      BBVIC_TABLE = -1.E36
 !
 !-----READ IN SOIL PROPERTIES FROM SOILPARM.TBL
 !
@@ -10061,7 +10137,8 @@ CONTAINS
     DO LC=1,SLCATS
       READ (21,*) ITMP,BEXP_TABLE(LC),SMCDRY_TABLE(LC),F1_TABLE(LC),SMCMAX_TABLE(LC),    &
                   SMCREF_TABLE(LC),PSISAT_TABLE(LC),DKSAT_TABLE(LC), DWSAT_TABLE(LC),   &
-                  SMCWLT_TABLE(LC), QUARTZ_TABLE(LC), BVIC_TABLE(LC), G_TABLE(LC)
+                  SMCWLT_TABLE(LC), QUARTZ_TABLE(LC), BVIC_TABLE(LC), G_TABLE(LC), &
+                  BBVIC_TABLE(LC)
     ENDDO
 
     CLOSE (21)

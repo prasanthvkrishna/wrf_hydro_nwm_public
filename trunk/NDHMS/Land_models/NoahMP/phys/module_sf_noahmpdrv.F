@@ -57,12 +57,13 @@ CONTAINS
 		BGAPXY,   WGAPXY,    TGVXY,     TGBXY,    CHVXY,     CHBXY, & ! OUT Noah MP only
 		 SHGXY,    SHCXY,    SHBXY,     EVGXY,    EVBXY,     GHVXY, & ! OUT Noah MP only
 		 GHBXY,    IRGXY,    IRCXY,     IRBXY,     TRXY,     EVCXY, & ! OUT Noah MP only
-              CHLEAFXY,   CHUCXY,   CHV2XY,    CHB2XY,                      & ! OUT Noah MP only
+              CHLEAFXY,   CHUCXY,   CHV2XY,    CHB2XY,          IOPT_INFDV, & ! OUT Noah MP only
 #ifdef SPATIAL_SOIL
                  BEXP_3D,SMCDRY_3D,SMCWLT_3D,SMCREF_3D,SMCMAX_3D,             &
 		 DKSAT_3D,DWSAT_3D,PSISAT_3D,QUARTZ_3D,                       &
 		 REFDK_2D,REFKDT_2D,SLOPE_2D,                                 &
 		 CWPVT_2D,VCMX25_2D,MP_2D,HVT_2D,MFSNO_2D,RSURFEXP_2D,        &
+                 BVIC_2D,G_2D,BBVIC_2D,                                       &
 #endif
 #ifdef WRF_HYDRO
                sfcheadrt,INFXSRT,soldrain,                                  &
@@ -121,6 +122,7 @@ CONTAINS
     INTEGER,                                         INTENT(IN   ) ::  IOPT_SOIL ! soil configuration option
     INTEGER,                                         INTENT(IN   ) ::  IOPT_PEDO ! soil pedotransfer function option
     INTEGER,                                         INTENT(IN   ) ::  IOPT_CROP ! crop model option (0->none; 1->Liu et al.)
+    INTEGER,                                         INTENT(IN   ) ::  IOPT_INFDV! infiltration options for dynamic VIC infiltration (1->Philip; 2-> Green-Ampt;3->Smith-Parlange)
     INTEGER,                                         INTENT(IN   ) ::  IZ0TLND   ! option of Chen adjustment of Czil (not used)
     REAL,    DIMENSION( ims:ime, kms:kme, jms:jme ), INTENT(IN   ) ::  T3D       ! 3D atmospheric temperature valid at mid-levels [K]
     REAL,    DIMENSION( ims:ime, kms:kme, jms:jme ), INTENT(IN   ) ::  QV3D      ! 3D water vapor mixing ratio [kg/kg_dry]
@@ -161,6 +163,9 @@ CONTAINS
     REAL,    DIMENSION( ims:ime, jms:jme ), INTENT(IN)          ::  HVT_2D    ! Canopy Height
     REAL,    DIMENSION( ims:ime, jms:jme ), INTENT(IN)          ::  MFSNO_2D  ! Snow cover m parameter
     REAL,    DIMENSION( ims:ime, jms:jme ), INTENT(IN)          ::  RSURFEXP_2D ! exponent in the shape parameter for soil resistance option 1
+    REAL,    DIMENSION( ims:ime, jms:jme ), INTENT(IN)          ::  BVIC_2D   ! VIC model infiltration parameter [-]  
+    REAL,    DIMENSION( ims:ime, jms:jme ), INTENT(IN)          ::  G_2D      ! Mean Capillary Drive (m) for infiltration models
+    REAL,    DIMENSION( ims:ime, jms:jme ), INTENT(IN)          ::  BBVIC_2D  ! DVIC heterogeniety paramater [-]
 #endif
 
 ! INOUT (with generic LSM equivalent)
@@ -476,7 +481,7 @@ CONTAINS
 
     CALL NOAHMP_OPTIONS(IDVEG  ,IOPT_CRS  ,IOPT_BTR  ,IOPT_RUN  ,IOPT_SFC  ,IOPT_FRZ , &
                      IOPT_INF  ,IOPT_RAD  ,IOPT_ALB  ,IOPT_SNF  ,IOPT_TBOT, IOPT_STC , &
-		     IOPT_RSF  ,IOPT_SOIL ,IOPT_PEDO ,IOPT_CROP )
+		     IOPT_RSF  ,IOPT_SOIL ,IOPT_PEDO ,IOPT_CROP ,IOPT_INFDV )
 
     IPRINT    =  .false.                     ! debug printout
 
@@ -660,6 +665,9 @@ CONTAINS
        parameters%hvt    = HVT_2D(I,J)            ! Canopy Height
        parameters%mfsno  = MFSNO_2D(I,J)          ! Snow cover m parameter
        parameters%rsurf_exp = RSURFEXP_2D(I,J)    ! exponent in the shape parameter for soil resistance option 1
+       parameters%BVIC   = BVIC_2D(I,J)           ! VIC model infiltration parameter [-]
+       parameters%G      = G_2D(I,J)              ! Mean Capillary Drive for infiltration models [m]
+       parameters%BBVIC  = BBVIC_2D(I,J)          ! DVIC heterogeniety parameter for infiltraton [-]
 #endif
        CALL TRANSFER_MP_PARAMETERS(VEGTYP,SOILTYP,SLOPETYP,SOILCOLOR,CROPTYPE,parameters)
        
@@ -1193,11 +1201,11 @@ SUBROUTINE TRANSFER_MP_PARAMETERS(VEGTYPE,SOILTYPE,SLOPETYPE,SOILCOLOR,CROPTYPE,
     parameters%MFSNO  =  MFSNO_TABLE(VEGTYPE)       !snowmelt m parameter ()
     parameters%HVT    =    HVT_TABLE(VEGTYPE)       !top of canopy (m)
     parameters%MP     =     MP_TABLE(VEGTYPE)       !slope of conductance-to-photosynthesis relationship
-   parameters%RSURF_EXP  =   RSURF_EXP_TABLE
+    parameters%RSURF_EXP  =   RSURF_EXP_TABLE
+    parameters%BVIC   = BVIC_TABLE(SOILTYPE)
+    parameters%G      = G_TABLE(SOILTYPE)
+    parameters%BBVIC  = BBVIC_TABLE(SOILTYPE)
 #endif
-   parameters%BVIC  = BVIC_TABLE(SOILTYPE)
-   parameters%G     = G_TABLE(SOILTYPE)
-
 ! ----------------------------------------------------------------------
 ! Transfer GENPARM parameters
 ! ----------------------------------------------------------------------
@@ -1352,7 +1360,7 @@ SUBROUTINE PEDOTRANSFER_SR2006(nsoil,sand,clay,orgm,parameters)
        t2mvxy   ,t2mbxy   ,chstarxy,            &
 !jref:end       
        NSOIL, restart,                 &
-       allowed_to_read , iopt_run, iopt_crop, iopt_pedo,   &
+       allowed_to_read , iopt_run, iopt_crop, iopt_pedo,  &
        ids,ide, jds,jde, kds,kde,                &
        ims,ime, jms,jme, kms,kme,                &
        its,ite, jts,jte, kts,kte,                &
