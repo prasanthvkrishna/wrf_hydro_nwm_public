@@ -5848,7 +5848,7 @@ ENDIF   ! CROPTYPE == 0
           RUNSUB       = QDIS          !mm/s
        END IF
 
-       IF(OPT_RUN == 3 .or. OPT_RUN == 4) THEN 
+       IF(OPT_RUN == 3 .or. OPT_RUN == 4 .OR. OPT_RUN == 8) THEN 
           RUNSUB       = RUNSUB + QDRAIN        !mm/s
        END IF
 
