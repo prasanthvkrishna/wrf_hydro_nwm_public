@@ -7575,8 +7575,8 @@ ENDIF   ! CROPTYPE == 0
   REAL                                 :: YD            !initial depth Y (m)
   REAL                                 :: YD_OLD        !initial depth Y (m)
   REAL                                 :: YD0           !initial depth Y (m)
-  REAL                                 :: TEMP1
-  INTEGER                              :: IZ, INFLMAX
+  REAL                                 :: TEMP1, ERROR
+  INTEGER                              :: IZ, IZMAX, INFLMAX
 !---------------------------------------------------------------------------------
 
   TOP_MOIST     = 0.0
@@ -7589,6 +7589,8 @@ ENDIF   ! CROPTYPE == 0
   RUNOFFINF     = 0.0
   INFILTRTN     = 0.0
   RUNSRF        = 0.0
+  IZMAX         = 20
+  ERROR         = 3E-07*DT  
 
   BB = parameters%BBVIC
 
@@ -7659,16 +7661,13 @@ ENDIF   ! CROPTYPE == 0
             GOTO 2001
           ELSE
             YD        = 0.0
-            !YD_OLD    = YD + 5.0 ! add some random values such that YD-YD_OLD  will be > 1E-5
-                                 ! and start the following loop
-            !DO WHILE (ABS(YD-YD_OLD) .LE. 1E-05)
-
-            DO ! infinite loop : IITERATION1
+          
+            DO IZ = 1,IZMAX ! loop : IITERATION1
                YD_OLD = YD
                TEMPR1 = 0.0
                CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
                YD     = TEMPR1 + ((FSUR*DT) * (1 - (1-((DP-TEMPR1)/(FMAX*DT))**(BB+1.0))))
-               IF (ABS(YD-YD_OLD) .LE. 1E-05) THEN
+               IF ((ABS(YD-YD_OLD) .LE. ERROR) .OR. (IZ .EQ. IZMAX)) THEN
                   GOTO 1001
                END IF
             END DO
@@ -7690,16 +7689,13 @@ ENDIF   ! CROPTYPE == 0
               GOTO 2001     
             ELSE
               YD        = 0.0
-              !YD_OLD    = YD + 5.0 ! add some random values such that YD-YD_OLD  will be > 1E-5
-                                    ! and start the following loop
-              !DO WHILE (ABS(YD-YD_OLD) .LE. 1E-05)
-
-              DO ! infinite loop : IITERATION2
+              
+              DO IZ = 1,IZMAX ! loop : IITERATION2
                  YD_OLD = YD
                  TEMPR1 = 0.0
                  CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
                  YD     = TEMPR1 + (FSUR*DT)
-                 IF (ABS(YD-YD_OLD) .LE. 1E-05) THEN
+                 IF ((ABS(YD-YD_OLD) .LE. ERROR) .OR. (IZ .EQ. IZMAX)) THEN
                     GOTO 1001
                  END IF
               END DO
@@ -7708,27 +7704,27 @@ ENDIF   ! CROPTYPE == 0
           ELSE
             
             YD = DP/2.0
-            DO ! infinite loop : IITERATION30
+            DO IZ = 1,IZMAX ! loop : IITERATION30
                YD_OLD = YD
                TEMPR1 = 0.0
                CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
                YD     = YD - TEMPR1 - (FSUR*DT) + DP
                IF (YD .LE. 0.0) YD = 0.0
                IF (YD .GE. DP) YD = DP
-               IF (ABS(YD-YD_OLD) .LE. 1E-05) THEN
+               IF ((ABS(YD-YD_OLD) .LE. ERROR) .OR. (IZ .EQ. IZMAX)) THEN
                   YD0 = YD
                   EXIT
                END IF
             END DO
 
-            DO ! infinite loop : IITERATION3
+            DO IZ = 1,IZMAX ! loop : IITERATION3
                YD_OLD = YD
                TEMPR1 = 0.0
                TEMPR2 = 0.0
                CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
                CALL RR2(YD,YD0,TEMPR1,FMAX,FSUR,DT,DP,BB,TEMPR2)
                YD     = DP - TEMPR2
-               IF (ABS(YD-YD_OLD) .LE. 1E-05) THEN
+               IF ((ABS(YD-YD_OLD) .LE. ERROR) .OR. (IZ .EQ. IZMAX)) THEN
                   GOTO 1001
                END IF 
             END DO
@@ -7754,12 +7750,13 @@ ENDIF   ! CROPTYPE == 0
         IF((FMAX*DT) .GE. DP) THEN
           YD = DP/2.0
 
-          DO  ! ITERATION1
+          DO IZ = 1,IZMAX ! ITERATION1
              YD_OLD = YD
              TEMPR1 = 0.0
              CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
              YD = TEMPR1 + ((FSUR*DT) * (1 - (1-((DP-TEMPR1)/(FMAX*DT))**(BB+1.0))))
-             IF(ABS(YD - YD_OLD) .LE. 1E-05)THEN
+             !print*,'YD=',YD,'YD_OLD=',YD_OLD,'ERROR=',ABS(YD - YD_OLD),'IZ=',IZ,'ERROR2=',ERROR,'DT=',DT
+             IF ((ABS(YD - YD_OLD) .LE. ERROR) .OR. (IZ .EQ. IZMAX)) THEN
                 GOTO 1002
              END IF
           END DO
@@ -7768,18 +7765,18 @@ ENDIF   ! CROPTYPE == 0
           CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
           IF((TEMPR1+(FMAX*DT)) .LE. DP)THEN
               YD = DP/2.0
-              DO ! ITERATION2
+              DO IZ = 1,IZMAX ! ITERATION2
                  YD_OLD = YD
                  TEMPR1 = 0.0
                  CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
                  YD     = TEMPR1+(FSUR*DT)
-                 IF(ABS(YD - YD_OLD) .LE. 1E-05)THEN
+                 IF((ABS(YD - YD_OLD) .LE. ERROR) .OR. (IZ .EQ. IZMAX)) THEN
                     GOTO 1002
                  END IF
               END DO
           ELSE
               YD = 0.0
-              DO ! ITERATION30
+              DO IZ = 1,IZMAX ! ITERATION30
                  YD_OLD = YD
                  TEMPR1 = 0.0
                  CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
@@ -7788,19 +7785,19 @@ ENDIF   ! CROPTYPE == 0
                  IF(YD .GE. DP) YD = DP
                  TEMPR1 = 0.0
                  CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
-                 IF(ABS(TEMPR1+(FMAX*DT)-DP) .LE. 1E-05)THEN
+                 IF ((ABS(TEMPR1+(FMAX*DT)-DP) .LE. ERROR) .OR. (IZ .EQ. IZMAX)) THEN
                     YD0 = YD
                     EXIT
                  END IF
               END DO
-              DO  ! ITERATION3
+              DO  IZ = 1,IZMAX ! ITERATION3
                  YD_OLD = YD
                  TEMPR1 = 0.0
                  TEMPR2 = 0.0
                  CALL RR1(parameters,I_0,I_MAX,YD,TEMPR1)
                  CALL RR2(YD,YD0,TEMPR1,FMAX,FSUR,DT,DP,BB,TEMPR2)
                  YD     = DP - TEMPR2
-                 IF(ABS(YD-YD_OLD) .LE. 1E-05)THEN
+                 IF ((ABS(YD-YD_OLD) .LE. ERROR) .OR. (IZ .EQ. IZMAX)) THEN
                    GOTO 1002
                  END IF
               END DO
@@ -7829,6 +7826,7 @@ ENDIF   ! CROPTYPE == 0
      RUNSRF = MIN(RUNSRF,QINSUR)
      RUNSRF = MAX(RUNSRF,0.0)
      PDDUM  = QINSUR - RUNSRF
+     
   END SUBROUTINE DYNAMIC_VIC
 
 ! ---------------------------  Runoff subroutines for dynamic VIC ----------------------------
