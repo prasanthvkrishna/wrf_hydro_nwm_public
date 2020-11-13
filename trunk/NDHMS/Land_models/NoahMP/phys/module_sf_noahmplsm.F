@@ -7590,7 +7590,7 @@ ENDIF   ! CROPTYPE == 0
   INFILTRTN     = 0.0
   RUNSRF        = 0.0
   IZMAX         = 20
-  ERROR         = 3E-07*DT  
+  ERROR         = 1.388889E-07*DT ! 0.5 mm per hour time step
 
   BB = parameters%BBVIC
 
