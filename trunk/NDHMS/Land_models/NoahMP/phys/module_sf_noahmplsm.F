@@ -7536,6 +7536,8 @@ ENDIF   ! CROPTYPE == 0
 ! compute inflitration rate at soil surface and estimate surface runoff based on 
 ! Liang, X., & Xie, Z. (2001). A new surface runoff parameterization with subgrid-scale
 ! soil heterogeneity for land surface models. Advances in Water Resources, 24(9-10), 1173-1193.
+! Author: Prasanth Valayamkunnath <prasanth@ucar.edu>
+! Date  : August 3, 2020
 ! --------------------------------------------------------------------------------
    IMPLICIT NONE
 ! --------------------------------------------------------------------------------
@@ -7605,17 +7607,6 @@ ENDIF   ! CROPTYPE == 0
   I_0    = I_MAX * (1-(1-(TOP_MOIST/TOP_MAX_MOIST)**(1.0/(1.0+parameters%BVIC))))        ! infiltration capacity, i [m] in the Eq. 1
 
   ! I_MAX = CAP_minf ; I_0 = A  
-
-  ! Call infiltration option one from three 1 = Philip, 2 = Green-Ampt, 3 = Smith-Parlange
-  !INFLMAX = 1
-  !IF (OPT_INFVIC .EQ. 1) THEN
-  !   CALL PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FMAX,INFLMAX)
-  !ELSE IF (OPT_INFVIC .EQ. 2) THEN
-  !   CALL GREEN_AMPT_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FMAX,INFLMAX)
-  !ELSE IF (OPT_INFVIC .EQ. 3) THEN
-  !   CALL SMITH_PARLANGE_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FMAX,INFLMAX)
-  !END IF
-
   INFLMAX = 0
   IF (OPT_INFDV .EQ. 1) THEN
      CALL PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FSUR,INFLMAX)
@@ -7833,6 +7824,7 @@ ENDIF   ! CROPTYPE == 0
   SUBROUTINE RR1 (parameters,I_0,I_MAX,YD,R1)
 !---------------------------------------------------------------------------------------------
 ! This subroutine estimate saturation excess runoff, R1
+! Author: Prasanth Valayamkunnath <prasanth@ucar.edu>
 !---------------------------------------------------------------------------------------------
    IMPLICIT NONE
 ! --------------------------------------------------------------------------------------------
@@ -7855,6 +7847,7 @@ ENDIF   ! CROPTYPE == 0
   SUBROUTINE RR2 (YD,Y0,R1,FMAX,FSUR,DT,DP,BB,R2)
 !---------------------------------------------------------------------------------------------
 ! This subroutine estimate infiltration excess runoff, R1
+! Author: Prasanth Valayamkunnath <prasanth@ucar.edu>
 !---------------------------------------------------------------------------------------------
    IMPLICIT NONE
 ! --------------------------------------------------------------------------------------------
@@ -7880,6 +7873,7 @@ END SUBROUTINE RR2
 ! This function estimate infiltration rate based on Smith-Parlange equation. We use its three
 ! parameter version of the equation (Eq. 6.25) from Smith, R.E. (2002) Infiltration Theory for
 ! Hydrologic Applications, Water Resources Monograph 15, AGU. 
+! Author: Prasanth Valayamkunnath <prasanth@ucar.edu>
 !---------------------------------------------------------------------------------------------
    IMPLICIT NONE
 ! --------------------------------------------------------------------------------------------
@@ -7906,7 +7900,7 @@ END SUBROUTINE RR2
    ISOIL = 1
 
    ! check whether we are estimating infiltration for current SMC or SMCWLT
-   IF (INFLMAX .EQ. 1)THEN
+   IF (INFLMAX .EQ. 1)THEN ! not active for now as the maximum infiltration is estimated based on table values
 
       ! estimate initial soil hydraulic conductivty (Ki in the equation), WCND (m/s)
       CALL WDFCND2 (parameters,WDF,WCND,parameters%SMCWLT(ISOIL),0.0,ISOIL) 
@@ -7951,6 +7945,7 @@ END SUBROUTINE RR2
 ! This function estimate infiltration rate based on Green-Ampt equation. We use its three
 ! parameter version of the smith-parlage equation (Eq. 6.25) from Smith, R.E. (2002) Infiltration Theory for
 ! Hydrologic Applications, Water Resources Monograph 15, AGU. Where gamma = 0, Eq 6.25 = Green-Ampt.
+! Author: Prasanth Valayamkunnath <prasanth@ucar.edu>
 !-------------------------------------------------------------------------------------------------
    IMPLICIT NONE
 ! ------------------------------------------------------------------------------------------------
@@ -8012,6 +8007,7 @@ END SUBROUTINE RR2
 ! This function estimate infiltration rate based on Philip's two parameter equation (Eq. 2) presented in
 ! Valiantzas (2010). New linearized two-parameter infiltration equation for direct determination 
 ! of conductivity and sorptivity, J. Hydrology.
+! Author: Prasanth Valayamkunnath <prasanth@ucar.edu>
 !---------------------------------------------------------------------------------------------
    IMPLICIT NONE
 ! --------------------------------------------------------------------------------------------
