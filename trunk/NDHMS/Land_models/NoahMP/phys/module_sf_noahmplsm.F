@@ -7609,11 +7609,11 @@ ENDIF   ! CROPTYPE == 0
   ! I_MAX = CAP_minf ; I_0 = A  
   INFLMAX = 0
   IF (OPT_INFDV .EQ. 1) THEN
-     CALL PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FSUR,INFLMAX)
+     CALL PHILIP_INFIL(parameters,NSOIL,SMC,SICE,QINSUR,DT,FACC,FSUR,INFLMAX)
   ELSE IF (OPT_INFDV .EQ. 2) THEN
-     CALL GREEN_AMPT_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
+     CALL GREEN_AMPT_INFIL(parameters,NSOIL,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
   ELSE IF (OPT_INFDV .EQ. 3) THEN
-     CALL SMITH_PARLANGE_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
+     CALL SMITH_PARLANGE_INFIL(parameters,NSOIL,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
   END IF
 
   ! I_MM = FSUR; I_M = FMAX  
@@ -7868,7 +7868,7 @@ END SUBROUTINE RR2
 
 !== begin smith-parlange infiltration ===============================================================
 
-  SUBROUTINE SMITH_PARLANGE_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
+  SUBROUTINE SMITH_PARLANGE_INFIL(parameters,NSOIL,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
 !---------------------------------------------------------------------------------------------
 ! This function estimate infiltration rate based on Smith-Parlange equation. We use its three
 ! parameter version of the equation (Eq. 6.25) from Smith, R.E. (2002) Infiltration Theory for
@@ -7878,6 +7878,7 @@ END SUBROUTINE RR2
    IMPLICIT NONE
 ! --------------------------------------------------------------------------------------------
    type (noahmp_parameters), intent(in) :: parameters
+   INTEGER,                  INTENT(IN) :: NSOIL  !no of soil layers (4)
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: ZSOIL  !depth of soil layer-bottom [m]
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SMC    !soil moisture content [m3/m3]
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SICE   !soil ice content [m3/m3]
@@ -7940,7 +7941,7 @@ END SUBROUTINE RR2
 
 !== begin Green_Ampt infiltration ==================================================================
 
-  SUBROUTINE GREEN_AMPT_INFIL(parameters,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
+  SUBROUTINE GREEN_AMPT_INFIL(parameters,NSOIL,ZSOIL,SMC,SICE,QINSUR,FACC,FSUR,INFLMAX)
 !-------------------------------------------------------------------------------------------------
 ! This function estimate infiltration rate based on Green-Ampt equation. We use its three
 ! parameter version of the smith-parlage equation (Eq. 6.25) from Smith, R.E. (2002) Infiltration Theory for
@@ -7950,6 +7951,7 @@ END SUBROUTINE RR2
    IMPLICIT NONE
 ! ------------------------------------------------------------------------------------------------
    type (noahmp_parameters), intent(in) :: parameters
+   INTEGER,                  INTENT(IN) :: NSOIL  !no of soil layers (4)
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: ZSOIL  !depth of soil layer-bottom [m]
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SMC    !soil moisture content [m3/m3]
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SICE   !soil ice content [m3/m3]
@@ -8002,7 +8004,7 @@ END SUBROUTINE RR2
 
 !== begin Philip's infiltration ====================================================================
 
-  SUBROUTINE PHILIP_INFIL(parameters,SMC,SICE,QINSUR,DT,FACC,FSUR,INFLMAX)
+  SUBROUTINE PHILIP_INFIL(parameters,NSOIL,SMC,SICE,QINSUR,DT,FACC,FSUR,INFLMAX)
 !-------------------------------------------------------------------------------------------------------
 ! This function estimate infiltration rate based on Philip's two parameter equation (Eq. 2) presented in
 ! Valiantzas (2010). New linearized two-parameter infiltration equation for direct determination 
@@ -8012,6 +8014,7 @@ END SUBROUTINE RR2
    IMPLICIT NONE
 ! --------------------------------------------------------------------------------------------
    type (noahmp_parameters), intent(in) :: parameters
+   INTEGER,                  INTENT(IN) :: NSOIL  !no of soil layers (4)
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SMC    !soil moisture content [m3/m3]
    REAL, DIMENSION(1:NSOIL), INTENT(IN) :: SICE   !soil ice content [m3/m3]
    REAL,                     INTENT(IN) :: QINSUR !water input on soil surface [m/s]
